@@ -1,0 +1,32 @@
+# Raw sequencing data
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+
+# Alignment and classification outputs
+*.sam
+*.bam
+*.daa
+*.rma6
+*.blastx
+*.out
+*.report
+*.log
+
+# Large databases and archives
+*.tar.gz
+*.gz
+*.zip
+*.db
+*.dmnd
+
+# Result folders
+data/
+results/
+output/
+tmp/
+logs/
+
+# macOS
+.DS_Store
