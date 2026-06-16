@@ -20,10 +20,9 @@ The main analysis steps are:
 
 This repository provides workflow documentation and curated analysis command records for the associated manuscript.
 
-It is not a fully automated software package. Some steps, especially database preparation and MEGAN6-based taxonomic export, may require adaptation to the user's local computing environment.
+It is not a fully automated software package. Some steps, especially database preparation and MEGAN6-based taxonomic export, may require adaptation to the local computing environment.
 
 ## Notes
 
 Large sequencing files, intermediate outputs, and reference databases are not included in this repository.
 
-Server-specific paths and private data locations have been removed from the public version.
