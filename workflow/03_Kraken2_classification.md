@@ -156,7 +156,7 @@ git clone \
 #### Run the report-processing script
 # Enter the directory containing the Kraken2 *.report files.
 cd "/path/to/kraken2_output"
-# [事后修改]⭐️ Download the `kraken2_reports_to_count_tables.sh` script from the `scripts` directory of this repository, place it in the directory containing the Kraken2 `*.report` files, and run it from that directory.
+# Download the `kraken2_reports_to_count_tables.sh` script from the `scripts` directory of this repository, place it in the directory containing the Kraken2 `*.report` files, and run it from that directory.
 # Specify the local KrakenTools directory as the first command-line argument.
 # Run the following commands in a terminal.
 bash "kraken2_reports_to_count_tables.sh" "/path/to/software/KrakenTools"
