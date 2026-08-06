@@ -11,7 +11,7 @@ source("R_scripts/PCA_functions.R")
 
 
 # ============================================================
-# 2. Dataset-specific settings
+# 2. Cassava-specific settings
 # ============================================================
 
 dataset_name <- "cassava"
@@ -22,15 +22,17 @@ metadata_file <- file.path(
   "metadata.tsv"
 )
 
-group_col <- "rootcolor" # need to be specified
+# Metadata column used for PERMANOVA and PCA plot grouping
+group_col <- "rootcolor"
 
+# Colors assigned to the cassava root-color groups.
+# Names must exactly match the values in metadata[[group_col]].
 group_colors <- c(
   "heavy yellow" = "mediumpurple4",
   "light yellow" = "lightgoldenrod1",
   "middle yellow" = "lightpink2",
   "white" = "aquamarine"
 )
-
 
 # ============================================================
 # 3. Load sample metadata
