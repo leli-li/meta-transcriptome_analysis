@@ -22,7 +22,6 @@
 *.dmnd
 
 # Result folders
-data/
 results/
 output/
 tmp/
