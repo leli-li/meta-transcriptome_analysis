@@ -35,7 +35,7 @@ for file in *mate1*_nonplant.fq; do
     exit 1
   fi
 
-  "/path/to/software/trinityrnaseq-v2.14.0/Trinity" \
+  Trinity \
     --seqType fq \
     --left "$file" \
     --right "$mate2" \
