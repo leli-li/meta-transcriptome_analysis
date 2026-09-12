@@ -53,6 +53,8 @@ for file in *.report; do
     -r "$file" \
     -o "mpa_report/${sample}.mpa" \
     --display-header
+done
+
 
 # Step 2: Combine all MPA files into one read-count matrix
 echo "[Step 2] Combining all .mpa files into combine.mpa..."
