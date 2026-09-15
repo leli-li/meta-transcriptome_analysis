@@ -55,7 +55,6 @@ for file in *.report; do
     --display-header
 done
 
-
 # Step 2: Combine all MPA files into one read-count matrix
 echo "[Step 2] Combining all .mpa files into combine.mpa..."
 
@@ -67,7 +66,7 @@ python "$KRAKENTOOLS_DIR/combine_mpa.py" \
 
 # Step 3: Extract rank-specific bacterial and fungal count tables
 echo "[Step 3] Extracting taxonomic levels from combine.mpa..."
-# These rank-specific tables are intentionally written without header lines.
+# Header lines are added to the rank-specific tables below.
 # Sample names are added later during downstream processing in R.
 
 awk -F "|" '/k__Bacteria/ {print $NF}' combine.mpa \
@@ -99,5 +98,15 @@ awk -F "|" '/k__Fungi/ {print $NF}' combine.mpa \
   | grep "^s__" \
   | sed 's/^s__//' \
   | sort -u > "fungi_sp.txt"
+
+# Add the header from combine.mpa to each rank-specific table
+for table in bac_f.txt bac_g.txt bac_sp.txt fungi_f.txt fungi_g.txt fungi_sp.txt; do
+  {
+    head -n 1 combine.mpa
+    cat "$table"
+  } > "${table}.tmp"
+
+  mv "${table}.tmp" "$table"
+done
 
 echo "All done. Output files are saved in: $(pwd)"
