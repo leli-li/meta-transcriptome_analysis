@@ -132,33 +132,56 @@ cd "/path/to/DIAMOND_output"
   -lg \
   -v
 
+### Generating contig-count matrices
+This workflow exports taxonomic counts from meganized DAA files, converts them to MPA format, and combines the per-sample reports into rank-specific count matrices. Because the DIAMOND queries are assembled contigs, the resulting matrices contain contig counts rather than read-abundance estimates.
+#### Create Conda environment
+conda create -n megan2mpa -c conda-forge python=3.10 ete3 pandas -y
+conda activate megan2mpa
+#### Export NCBI taxonomic class-to-count files
+# Run the following commands in the directory containing the meganized DAA files:
+mkdir -p NCBI_c2c
+for file in *.daa; do
+    /path/to/daa2info \
+        -i "$file" \
+        -c2c Taxonomy \
+        -n \
+        -r \
+        -o "NCBI_c2c/${file%.daa}_NCBI_c2c.txt"
+done
 
-### Generating read count matrix using MEGAN6
-### [In GUI]Generate a rank-level taxonomic count matrix using the MEGAN6 GUI
-# Step 1: Create a comparison document
-Select **File → Compare...** and add all meganized DAA files to be
-included in the comparison.
-Select **Use Absolute Counts** to retain the original taxonomic counts
-for each sample, and then create the comparison document.
-⬇️
-# Step 2: Project taxonomic assignments to the required rank
-In the comparison document, select:
-**Options → Project Assignments To Rank...**
-Choose the taxonomic rank used in the downstream analysis.
-Repeat the projection and export steps separately for the Family, Genus, and Species ranks.
-# Taxonomic assignments in MEGAN may occur at different levels of the taxonomy. Projection generates a taxonomic profile represented at a consistent rank for subsequent count-matrix export and sample comparison.
-⬇️
-# Step 3: Select bacterial or fungal taxa
-In the projected taxonomy document, select either the **Bacteria** node or the **Fungi** node. Bacterial and fungal count matrices are exported separately.
-⬇️
-# Step 4: Select the taxa below the selected nodes
-Select:
-**Select → Leaves Below**
-This selects the leaf taxa displayed below the selected Bacteria and
-Fungi nodes.
-⬇️
-# Step 5: Export the taxonomic count matrix
-Select:
-**File → Export → Text (CSV) Format...**
-Export the selected taxonomic counts using a tab-separated text format.
-Repeat Steps 2–5 for each taxonomic rank and organism group to generate six tab-separated count matrices: family-, genus-, and species-level matrices for bacteria and fungi.
+### Convert MEGAN c2c files to MPA format
+# MEGAN taxonomic class-to-count (c2c) files were converted to MPA-style count tables using a locally modified version of `Convert_MEGAN-NCBI-c2c_to_kreport-mpa.py` from [PacBio’s pb-metagenomics-tools](https://github.com/PacificBiosciences/pb-metagenomics-tools). 
+# Find the The modified script, `Convert_MEGAN-NCBI-c2c_to_kreport-mpa_revised.py` in the `Scripts/` directory. 
+
+#### Run converter
+# Use an empty mpa_report/ directory before running the converter, as the conversion script appends to existing output files.
+cd NCBI_c2c
+mkdir -p mpa_report
+
+for file in *_NCBI_c2c.txt; do
+    sample="$(basename "${file%_NCBI_c2c.txt}")"
+
+    python3 /path/to/Scripts/Convert_MEGAN-NCBI-c2c_to_kreport-mpa_revised.py \
+        -i "$file" \
+        -c three \
+        -l "mpa_report/${sample}" \
+        -r 1
+    
+    # Remove intermediate files and the unused kreport output.
+    rm -f \
+        "mpa_report/${sample}.intermediate.names.txt" \
+        "mpa_report/${sample}.intermediate.taxid.txt" \
+        "mpa_report/${sample}.megan-c2c.kreport.txt"
+    
+    # Rename the MPA output for downstream processing.
+    mv \
+        "mpa_report/${sample}.megan-c2c.mpa.txt" \
+        "mpa_report/${sample}.megan.mpa"
+done
+# The -r argument supplies the denominator for percentages in the kreport output. Here, -r 1 is used as a placeholder because the kreport output is discarded; it does not affect the MPA count values.
+
+#### Generate bacterial and fungal count matrices at the family, genus, and species levels
+# Combine the per-sample MPA reports and extract six contig-count matrices: bacterial and fungal matrices at the family, genus, and species levels. Each matrix contains taxa as rows and samples as columns.
+cd mpa_report
+# Run this command in the directory containing all .megan.mpa files:
+bash /path/to/megan6_mpa_to_count_tables.sh /path/to/KrakenTools
