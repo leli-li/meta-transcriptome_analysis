@@ -1,27 +1,43 @@
-# PCA and PERMANOVA analysis of overlapping taxa
-# Input: taxon count matrices from Kraken2 or DIAMOND-MEGAN6
-# Analysis: Hellinger transformation, PCA, PERMANOVA, and visualization
+# PCA and PERMANOVA for taxa shared by the two workflows.
+# Use one count matrix, a shared-taxon list, and sample metadata.
 
 library(vegan)     # Hellinger transformation, PCA, PERMANOVA
 library(ggplot2)   # plotting
 library(ggrepel)   # non-overlapping labels
 library(ggalt)     # geom_encircle
 
+# Add stars before rounding the P value.
+format_permanova_p <- function(p) {
+  if (is.na(p)) return("NA")
+
+  stars <- if (p < 0.001) {
+    "***"
+  } else if (p < 0.01) {
+    "**"
+  } else if (p < 0.05) {
+    "*"
+  } else {
+    ""
+  }
+
+  paste0(signif(p, 3), stars)
+}
+
 run_PCA_analysis <- function(
     count_file,
     overlap_file,
     metadata,
     permanova_rhs,
-    permanova_by = NULL
+    permanova_by = NULL,
+    count_header = FALSE,
+    sample_id_transform = identity
 ) {
-  # --------------------------------------------------------
   # 1. Read count matrix
-  # --------------------------------------------------------
   
   micro_data <- read.delim(
     count_file,
     sep = "\t",
-    header = FALSE,
+    header = count_header,
     row.names = 1,
     stringsAsFactors = FALSE,
     check.names = FALSE,
@@ -32,12 +48,20 @@ run_PCA_analysis <- function(
   rownames(micro_data) <- gsub("_", " ", rownames(micro_data))
   
   
-  # --------------------------------------------------------
-  # 2. Assign sample names
-  # --------------------------------------------------------
+  # 2. Check sample IDs
   
   if (!"sample_id" %in% colnames(metadata)) {
     stop("metadata must contain a 'sample_id' column.")
+  }
+
+  metadata$sample_id <- as.character(metadata$sample_id)
+
+  if (
+    anyNA(metadata$sample_id) ||
+    any(trimws(metadata$sample_id) == "") ||
+    anyDuplicated(metadata$sample_id)
+  ) {
+    stop("metadata sample_id must contain unique, non-missing IDs.")
   }
   
   if (ncol(micro_data) != nrow(metadata)) {
@@ -47,12 +71,31 @@ run_PCA_analysis <- function(
     )
   }
   
-  colnames(micro_data) <- metadata$sample_id
+  if (count_header) {
+    # Extract sample IDs from the count-matrix headers.
+    ids <- as.character(sample_id_transform(colnames(micro_data)))
+
+    if (
+      length(ids) != ncol(micro_data) ||
+      anyNA(ids) ||
+      any(trimws(ids) == "") ||
+      anyDuplicated(ids)
+    ) {
+      stop("Invalid or duplicated count-matrix sample IDs: ", count_file)
+    }
+
+    if (!setequal(ids, metadata$sample_id)) {
+      stop("Count-matrix sample IDs do not match metadata: ", count_file)
+    }
+
+    colnames(micro_data) <- ids
+  } else {
+    # Without headers, metadata must match the matrix column order.
+    colnames(micro_data) <- metadata$sample_id
+  }
   
   
-  # --------------------------------------------------------
-  # 3. Retain overlapping taxa
-  # --------------------------------------------------------
+  # 3. Keep shared taxa
   
   overlap <- read.delim(
     overlap_file,
@@ -72,16 +115,12 @@ run_PCA_analysis <- function(
   micro_data <- micro_data[overlap, , drop = FALSE]
   
   
-  # --------------------------------------------------------
-  # 4. Transpose to sample × taxon
-  # --------------------------------------------------------
+  # 4. Put samples in rows
   
   micro_data <- t(micro_data)
   
   
-  # --------------------------------------------------------
   # 5. Match metadata to sample order
-  # --------------------------------------------------------
   
   metadata_matched <- metadata[
     match(rownames(micro_data), metadata$sample_id),
@@ -94,9 +133,7 @@ run_PCA_analysis <- function(
   }
   
   
-  # --------------------------------------------------------
   # 6. Hellinger transformation and PCA
-  # --------------------------------------------------------
   
   micro_hel <- decostand(
     micro_data,
@@ -123,15 +160,13 @@ run_PCA_analysis <- function(
     scores(
       PCA,
       display = "species",
-      scaling = 2,
+      scaling = 1,
       choices = 1:2
     )
   )
   
   
-  # --------------------------------------------------------
   # 7. Add metadata to sample scores
-  # --------------------------------------------------------
   
   metadata_columns <- setdiff(
     colnames(metadata_matched),
@@ -144,9 +179,7 @@ run_PCA_analysis <- function(
   )
   
   
-  # --------------------------------------------------------
   # 8. PERMANOVA
-  # --------------------------------------------------------
   
   if (
     !is.character(permanova_rhs) ||
@@ -183,22 +216,20 @@ run_PCA_analysis <- function(
     )
   }
   
+  # Use Euclidean distances on the same Hellinger data as the PCA.
   permanova_formula <- as.formula(
-    paste("micro_data ~", permanova_rhs)
+    paste("micro_hel ~", permanova_rhs)
   )
   
   permanova <- adonis2(
     permanova_formula,
     data = metadata_matched,
     permutations = 9999,
-    method = "bray",
+    method = "euclidean",
     by = permanova_by
   )
   
   
-  # --------------------------------------------------------
-  # 9. Return analysis results
-  # --------------------------------------------------------
   
   return(list(
     count_matrix = micro_data,
@@ -214,9 +245,7 @@ run_PCA_analysis <- function(
 }
 
 
-# ============================================================
-# Create a PCA plot
-# ============================================================
+# Draw the PCA plot.
 
 plot_PCA_result <- function(
     analysis_result,
@@ -295,9 +324,7 @@ plot_PCA_result <- function(
     "%"
   )
   
-  # --------------------------------------------------------
-  # Build PERMANOVA subtitle text
-  # --------------------------------------------------------
+  # Show PERMANOVA results in the subtitle.
   
   permanova_table <- analysis_result$permanova
   
@@ -320,9 +347,8 @@ plot_PCA_result <- function(
         2
       ),
       "%; p = ",
-      signif(
-        permanova_table[model_row, "Pr(>F)"],
-        3
+      format_permanova_p(
+        permanova_table[model_row, "Pr(>F)"]
       )
     )
     
@@ -344,9 +370,8 @@ plot_PCA_result <- function(
             2
           ),
           "%; p = ",
-          signif(
-            permanova_table[term, "Pr(>F)"],
-            3
+          format_permanova_p(
+            permanova_table[term, "Pr(>F)"]
           )
         )
       },
@@ -367,9 +392,7 @@ plot_PCA_result <- function(
   }
   
   
-  # --------------------------------------------------------
   # Check plotting colors
-  # --------------------------------------------------------
   
   if (!is.null(group_colors)) {
     missing_colors <- setdiff(
@@ -386,9 +409,7 @@ plot_PCA_result <- function(
   }
   
   
-  # --------------------------------------------------------
   # Create PCA plot
-  # --------------------------------------------------------
   
   if (is.null(shape_col)) {
     point_layer <- geom_point(
@@ -452,9 +473,10 @@ plot_PCA_result <- function(
       yintercept = 0,
       color = "gray",
       size = 0.4
-    )
+    ) +
+    coord_equal()
 
-  # Optional polygon layer (used for Place x genotype groups)
+  # Optionally draw polygons around groups.
   if (!is.null(polygon_col)) {
 
     p <- p +
@@ -514,7 +536,7 @@ plot_PCA_result <- function(
       scale_shape_manual(values = shape_values)
   }
 
-  # Add sample labels last, if requested
+  # Draw sample labels on top.
   if (show_sample_labels) {
     p <- p +
       geom_text_repel(
@@ -525,16 +547,7 @@ plot_PCA_result <- function(
 
   return(p)
 }
-# ============================================================
-# Add top-abundance taxon arrows to an existing PCA plot
-# ============================================================
-#
-# Taxa are ranked by total abundance across the same overlapping
-# count matrix and the same samples used in the PCA.
-#
-# This reproduces the original all-potato arrow-selection logic
-# without pipeline-specific deletion of sample columns.
-#
+# Add arrows for shared taxa with the highest total counts in the PCA samples.
 add_taxa_arrows <- function(
     p,
     analysis_result,
@@ -547,9 +560,7 @@ add_taxa_arrows <- function(
     label_size = 2
 ) {
 
-  # --------------------------------------------------------
   # 1. Validate inputs
-  # --------------------------------------------------------
 
   if (!inherits(p, "ggplot")) {
     stop("p must be a ggplot object.")
@@ -586,9 +597,7 @@ add_taxa_arrows <- function(
   }
 
 
-  # --------------------------------------------------------
-  # 2. Select the most abundant overlapping taxa
-  # --------------------------------------------------------
+  # 2. Rank taxa by total count
 
   taxon_abundance <- colSums(
     count_matrix,
@@ -624,9 +633,7 @@ add_taxa_arrows <- function(
   }
 
 
-  # --------------------------------------------------------
   # 3. Prepare arrow coordinates
-  # --------------------------------------------------------
 
   arrow_data <- taxa_scores[
     top_taxa,
@@ -639,9 +646,7 @@ add_taxa_arrows <- function(
   )
 
 
-  # --------------------------------------------------------
   # 4. Add arrows and taxon labels
-  # --------------------------------------------------------
 
   p <- p +
     geom_segment(

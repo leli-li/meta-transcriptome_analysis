@@ -1,29 +1,20 @@
-# Shannon diversity analysis of overlapping taxa
-#
-# Input:
-#   - bacterial and fungal count matrices from Kraken2 or DIAMOND-MEGAN6
-#   - bacterial and fungal overlap lists
-#   - sample metadata
-#
-# Method:
-#   Shannon diversity is calculated directly from the retained count matrix.
-#   vegan::diversity() internally converts each sample to proportions.
-#   No Hellinger transformation is applied before Shannon calculation.
-#
-# Bacterial and fungal overlapping taxa are combined at each taxonomic level,
-# following the structure of the original Shannon scripts.
+# Calculate Shannon diversity for shared bacterial and fungal taxa.
+# Combine their counts within each taxonomic rank.
+# Use counts directly, without a Hellinger transformation.
 
 library(vegan)
 library(ggplot2)
 
 read_Shannon_count_matrix <- function(
     count_file,
-    sample_ids
+    sample_ids,
+    count_header = FALSE,
+    sample_id_transform = identity
 ) {
   count_data <- read.delim(
-    count_file,
+    file = count_file,
     sep = "\t",
-    header = FALSE,
+    header = count_header,
     row.names = 1,
     stringsAsFactors = FALSE,
     check.names = FALSE,
@@ -40,7 +31,31 @@ read_Shannon_count_matrix <- function(
     )
   }
 
-  colnames(count_data) <- sample_ids
+  if (count_header) {
+    # Get sample IDs from the header.
+    ids <- sample_id_transform(colnames(count_data))
+
+    if (
+      length(ids) != ncol(count_data) ||
+      anyNA(ids) ||
+      any(ids == "") ||
+      anyDuplicated(ids) ||
+      !setequal(ids, sample_ids)
+    ) {
+      stop(
+        "Count-matrix sample IDs do not match sample_ids: ",
+        count_file
+      )
+    }
+
+    # Put columns in sample ID order.
+    colnames(count_data) <- ids
+    count_data <- count_data[, sample_ids, drop = FALSE]
+
+  } else {
+    # Without headers, sample_ids must match the column order.
+    colnames(count_data) <- sample_ids
+  }
 
   if (anyNA(count_data)) {
     stop("Missing values were found in the count matrix: ", count_file)
@@ -94,7 +109,9 @@ run_Shannon_analysis <- function(
     bac_overlap_file,
     fungi_overlap_file,
     sample_ids,
-    metadata
+    metadata,
+    count_header = FALSE,
+    sample_id_transform = identity
 ) {
 
   if (!"sample_id" %in% colnames(metadata)) {
@@ -138,12 +155,16 @@ run_Shannon_analysis <- function(
 
   bac_counts <- read_Shannon_count_matrix(
     count_file = bac_count_file,
-    sample_ids = sample_ids
+    sample_ids = sample_ids,
+    count_header = count_header,
+    sample_id_transform = sample_id_transform
   )
 
   fungi_counts <- read_Shannon_count_matrix(
     count_file = fungi_count_file,
-    sample_ids = sample_ids
+    sample_ids = sample_ids,
+    count_header = count_header,
+    sample_id_transform = sample_id_transform
   )
 
   bac_overlap_counts <- retain_Shannon_overlap(
@@ -174,8 +195,7 @@ run_Shannon_analysis <- function(
     )
   }
 
-  # Standard Shannon diversity.
-  # vegan::diversity() internally converts each sample to proportions.
+  # diversity() converts counts to proportions within each sample.
   shannon <- diversity(
     combined_counts,
     index = "shannon",
