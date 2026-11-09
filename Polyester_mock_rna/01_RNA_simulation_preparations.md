@@ -10,15 +10,14 @@ conda create -n mock_rna \
     ncbi-datasets-cli=16.6.0 \
     seqkit=2.13.0
 
-
 # Create directory for storing source sequences
 mkdir -p Data
 cd Data
 
-# Download microbial sequences
-## The microbial CDS FASTA files used in the original simulation were obtained from a local CAMISIM genome collection. The NCBI Datasets commands below provide a reproducible route for retrieving CDSs corresponding to the same versioned assembly accessions.
+# Download bacterial sequences
+## The bacterial CDS FASTA files used in the original simulation were obtained from a local CAMISIM genome collection. The NCBI Datasets commands below provide a reproducible route for retrieving CDSs corresponding to the same versioned assembly accessions.
 ## Save the following 24 versioned assembly accessions, one per line, as microbial_assembly_accessions.txt
-<!--
+```text
 GCA_000006785.2
 GCA_000013285.1
 GCA_000013785.1
@@ -43,16 +42,36 @@ GCA_000439255.1
 GCA_000445015.1
 GCA_001692755.1
 GCA_001877055.1
--->
-
+```
 ## Fetch using NCBI tool
 datasets download genome accession \
     --inputfile microbial_assembly_accessions.txt \
     --include cds  
 ## Decompress
 unzip ncbi_dataset.zip -d ncbi_cds
-## Combine microbial sequence
+## Combine bacterial sequence
 cat ncbi_cds/ncbi_dataset/data/GCA_*/*cds_from_genomic.fna  > microbes_all.fna
+
+
+# Download fungi sequences
+## create conda env and install ncbi-datasets tool
+conda create -n ncbi_tools -c conda-forge ncbi-datasets-cli -y
+conda activate ncbi_tools
+## Save the following 8 versioned assembly accessions, one per line, as fungal_assembly_accessions.txt
+```text
+GCF_023522795.1
+GCF_000149615.1
+GCF_033870435.1
+GCF_000150705.2
+GCF_003942205.1
+GCF_000271585.1
+GCF_001720195.1
+GCF_000320585.1
+```
+## Download the selected CDS sequences
+datasets download genome accession --inputfile fungal_assembly_accessions.txt --include cds --filename fungal_cds.zip
+## Extract the downloaded files
+unzip fungal_cds.zip -d fungal_cds
 
 
 # Download the host reference transcriptome
