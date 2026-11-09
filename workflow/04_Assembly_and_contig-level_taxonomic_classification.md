@@ -124,12 +124,14 @@ unzip "megan-map-Feb2022.db.zip"
 # The -t option sets the number of threads used by daa-meganizer.
 # The -v option enables verbose output.
 # daa-meganizer appends the classification results and the required indices directly to each DAA file. It does not generate a separate output file.
+# The -ram readCount generates contig counts
 cd "/path/to/DIAMOND_output"
 "/path/to/megan/tools/daa-meganizer" \
   -i *.daa \
   -mdb "/path/to/MEGAN_mapping_database/megan-map-Feb2022.db" \
   -t 8 \
   -lg \
+  -ram readCount \
   -v
 
 ### Generating contig-count matrices
