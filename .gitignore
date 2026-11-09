@@ -29,3 +29,5 @@ logs/
 
 # macOS
 .DS_Store
+
+.Rhistory

@@ -1,76 +1,74 @@
 # Validation of Polyester-generated mock RNA-seq reads
-## Run the following checks from the Polyester output directory.
-cd path/to/output_directory
 
+Run these checks with Bash from the mock working directory created in [step 01](01_RNA_simulation_preparations.md). The simulation must have finished writing its paired FASTA files, `metadata.csv`, and `transcript_sources.csv`.
 
+## Inspect the simulated FASTA files
 
-# 1. Inspect file count, format, and read lengths
-find . -maxdepth 1 -name "*.fasta" | sort
-find . -maxdepth 1 -name "*.fasta" | wc -l
+There should be six samples and 12 mate files. The combined template FASTA is not part of this check.
 
-seqkit stats -a -T ./*.fasta \
-  > "fasta_stats.tsv"
+```bash
+cd polyester_out_bacteria_fungi
+seqkit stats -a -T ./*_[12].fasta > fasta_stats.tsv
+column -t -s $'\t' fasta_stats.tsv
+```
 
-column -t -s $'\t' "fasta_stats.tsv"
+## Verify paired IDs and source counts
 
+Run this block from the simulation output directory. It reads filenames and counts by column name from `metadata.csv`, checks the IDs of both mates in order, and uses the template ID in each read header to look up its source in `transcript_sources.csv`. Count each pair once, using mate 1 after confirming the IDs match.
 
+```bash
+python3 - <<'PY'
+import csv
+from collections import Counter
+from itertools import zip_longest
 
-# 2. Verify mate counts and read-ID pairing
-for r1 in ./*_1.fasta; do
-    r2="${r1%_1.fasta}_2.fasta"
-
-    n1=$(grep -c '^>' "$r1")
-    n2=$(grep -c '^>' "$r2")
-
-    printf "%s\tR1=%s\tR2=%s\n" "$(basename "${r1%_1.fasta}")" "$n1" "$n2"
-
-    test "$n1" -eq "$n2" || {
-        echo "ERROR: mate counts differ"
-        exit 1
+with open("metadata.csv", newline="", encoding="utf-8") as handle:
+    samples = list(csv.DictReader(handle))
+with open("transcript_sources.csv", newline="", encoding="utf-8") as handle:
+    sources = {
+        row["transcript_id"]: row["kingdom"] for row in csv.DictReader(handle)
     }
 
-    cmp -s \
-      <(seqkit seq -n -i "$r1") \
-      <(seqkit seq -n -i "$r2") || {
-        echo "ERROR: mate IDs differ for $r1"
-        exit 1
-    }
-done
+if len(samples) != 6 or len({row["sample"] for row in samples}) != 6:
+    raise SystemExit("Expected six distinct mock samples in metadata.csv.")
 
 
-# 3. Verify FASTA record counts against metadata
-tail -n +2 metadata.csv | sed 's/"//g' | cut -d',' -f1,10 | tr ',' '\t' | sort > meta_pairs.txt
-tail -n +2 fasta_stats.tsv | cut -f1,4 | sed -E 's#^\./##; s/_[12]\.fasta\t/\t/' | sort -u > fasta_pairs.txt
-if comm -3 meta_pairs.txt fasta_pairs.txt | grep -q .; then
-    echo "ERROR: FASTA record counts do not match metadata." >&2
-    exit 1
-else
-    echo "PASS: all FASTA record counts match metadata."
-fi
+def fasta_ids(path):
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            if line.startswith(">"):
+                yield line[1:].split()[0]
 
 
+source_columns = {
+    "host": "potato_reads",
+    "bacteria": "bacteria_reads",
+    "fungi": "fungi_reads",
+}
+for row in samples:
+    sample = row["sample"]
+    counts = Counter()
+    for r1, r2 in zip_longest(fasta_ids(row["read1_file"]), fasta_ids(row["read2_file"])):
+        if r1 != r2:
+            raise SystemExit(f"{sample}: mate IDs or record counts differ.")
+        # Polyester uses read_id/template_id;... in each simulated FASTA header.
+        template = r1.partition("/")[2].split(";", 1)[0]
+        kingdom = sources.get(template)
+        if kingdom not in source_columns:
+            raise SystemExit(f"{sample}: unknown source template in {r1}")
+        counts[kingdom] += 1
 
-# 4. Verify host-read proportions from the final FASTA headers
-seqkit seq -n -i ../Data/random_potato_100.fna \
-  | sort -u \
-  > potato_transcript_ids.txt
+    pairs = sum(counts.values())
+    if pairs == 0 or pairs != float(row["assigned_reads"]):
+        raise SystemExit(f"{sample}: read-pair count differs from metadata.")
+    for kingdom, column in source_columns.items():
+        if counts[kingdom] != float(row[column]):
+            raise SystemExit(f"{sample}: {kingdom} read-pair count differs from metadata.")
 
-for r1 in ./*_1.fasta; do
-    total=$(grep -c '^>' "$r1")
+    print(f"PASS: {sample}: {pairs:,} pairs; "
+          f"potato={counts['host']:,} ({100 * counts['host'] / pairs:.2f}%); "
+          f"bacteria={counts['bacteria']:,}; fungi={counts['fungi']:,}")
+PY
+```
 
-    host=$(
-      seqkit seq -n -i "$r1" \
-        | sed -E 's#^[^/]*/##; s#;.*$##' \
-        | awk '
-            NR == FNR { host[$1] = 1; next }
-            ($1 in host) { n++ }
-            END { print n + 0 }
-          ' potato_transcript_ids.txt -
-    )
-
-    pct=$(awk -v h="$host" -v n="$total" \
-      'BEGIN { printf "%.6f", 100 * h / n }')
-
-    printf "%s\ttotal=%s\thost=%s\thost_pct=%s%%\n" \
-      "$(basename "${r1%_1.fasta}")" "$total" "$host" "$pct"
-done
+These checks validate the simulated input files, not classifier accuracy. Once all six samples pass, continue with [04_Upstream-analysis.md](04_Upstream-analysis.md).

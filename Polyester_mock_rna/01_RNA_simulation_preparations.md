@@ -1,63 +1,52 @@
 # Preparation of reference sequences for mock RNA-seq simulation
-## This document describes the preparation of microbial CDS templates and host transcript sequences used for Polyester simulation. 
+Prepare the bacterial and fungal CDS templates and potato transcripts used by the Polyester simulation.
 
+## Install the required tools
 
-
-# Install necessary tools
+```bash
 conda create -n mock_rna \
     -c conda-forge \
     -c bioconda \
     ncbi-datasets-cli=16.6.0 \
     seqkit=2.13.0
-
-# Create directory for storing source sequences
-mkdir -p Data
-cd Data
-
-# Download bacterial sequences
-## The bacterial CDS FASTA files used in the original simulation were obtained from a local CAMISIM genome collection. The NCBI Datasets commands below provide a reproducible route for retrieving CDSs corresponding to the same versioned assembly accessions.
-## Save the following 24 versioned assembly accessions, one per line, as microbial_assembly_accessions.txt
-```text
-GCA_000006785.2
-GCA_000013285.1
-GCA_000013785.1
-GCA_000015865.1
-GCA_000022345.1
-GCA_000023785.1
-GCA_000025905.1
-GCA_000092125.1
-GCA_000092825.1
-GCA_000092985.1
-GCA_000143845.1
-GCA_000143985.1
-GCA_000227705.3
-GCA_000231385.3
-GCA_000233715.3
-GCA_000235405.3
-GCA_000242255.3
-GCA_000255115.3
-GCA_000265425.1
-GCA_000325705.1
-GCA_000439255.1
-GCA_000445015.1
-GCA_001692755.1
-GCA_001877055.1
+conda activate mock_rna
 ```
-## Fetch using NCBI tool
+
+## Prepare the working directory
+
+Use a new working directory outside the Git checkout. Set the two paths below and run the command blocks in the same Bash session.
+
+```bash
+repo_dir="/path/to/meta-transcriptome_analysis"
+mock_dir="/path/to/mock_rna_project"
+mkdir -p "$mock_dir/data" "$mock_dir/fungi"
+cd "$mock_dir"
+```
+
+## Download bacterial CDSs
+
+The original bacterial CDS files came from a local CAMISIM genome collection. The commands below retrieve CDSs for the same versioned assembly accessions listed in [microbial_assembly_accessions.txt](Data/microbial_assembly_accessions.txt). Keep each assembly in a separate file, as required by the simulation script.
+
+```bash
+bacterial_accessions="$repo_dir/Polyester_mock_rna/Data/microbial_assembly_accessions.txt"
 datasets download genome accession \
-    --inputfile microbial_assembly_accessions.txt \
-    --include cds  
-## Decompress
-unzip ncbi_dataset.zip -d ncbi_cds
-## Combine bacterial sequence
-cat ncbi_cds/ncbi_dataset/data/GCA_*/*cds_from_genomic.fna  > microbes_all.fna
+    --inputfile "$bacterial_accessions" --include cds --filename data/bacterial_cds.zip
+unzip data/bacterial_cds.zip -d data/ncbi_cds
 
+while IFS= read -r accession || [[ -n "$accession" ]]; do
+    [[ -n "$accession" ]] || continue
+    cds="data/ncbi_cds/ncbi_dataset/data/$accession/cds_from_genomic.fna"
+    if [[ ! -s "$cds" ]]; then
+        echo "Missing or empty bacterial CDS file: $cds" >&2
+        exit 1
+    fi
+    cp "$cds" "data/${accession}.cds.fna" || exit 1
+done < "$bacterial_accessions"
+```
 
-# Download fungi sequences
-## create conda env and install ncbi-datasets tool
-conda create -n ncbi_tools -c conda-forge ncbi-datasets-cli -y
-conda activate ncbi_tools
-## Save the following 8 versioned assembly accessions, one per line, as fungal_assembly_accessions.txt
+## Download fungal CDSs
+
+Save the following eight versioned assembly accessions, one per line, as `fungi/fungal_assembly_accessions.txt`:
 ```text
 GCF_023522795.1
 GCF_000149615.1
@@ -68,13 +57,19 @@ GCF_000271585.1
 GCF_001720195.1
 GCF_000320585.1
 ```
-## Download the selected CDS sequences
-datasets download genome accession --inputfile fungal_assembly_accessions.txt --include cds --filename fungal_cds.zip
-## Extract the downloaded files
-unzip fungal_cds.zip -d fungal_cds
+Keep the extracted NCBI directory structure under `fungi/fungal_cds/`.
 
+```bash
+datasets download genome accession \
+    --inputfile fungi/fungal_assembly_accessions.txt --include cds \
+    --filename fungi/fungal_cds.zip
+unzip fungi/fungal_cds.zip -d fungi/fungal_cds
+```
 
-# Download the host reference transcriptome
+## Prepare potato transcripts
+
+```bash
+cd data
 wget https://ftp.ncbi.nlm.nih.gov/genomes/refseq/plant/Solanum_tuberosum/latest_assembly_versions/GCF_000226075.1_SolTub_3.0/GCF_000226075.1_SolTub_3.0_rna.fna.gz
 ## Decompress
 gunzip GCF_000226075.1_SolTub_3.0_rna.fna.gz
@@ -96,7 +91,17 @@ seqkit sample2 -n 100 -s 56 -2 \
 seqkit fx2tab -n -l random_potato_100.fna \
     | sort -t $'\t' -k2,2n \
     | head
+cd ..
+```
 
+## Run the simulation
 
-# NEXT-STEP: Run the simulation
-## Open `02_polyester_mock_rna.R` in R or RStudio. Set the working directory to the project root directory containing the `Data` folder, and run the script section by section.
+The simulation expects `data/random_potato_100.fna`, one `data/<accession>.cds.fna` per bacterial assembly, and `fungi/fungal_cds/ncbi_dataset/data/<accession>/cds_from_genomic.fna` per fungal assembly. Do not merge the bacterial CDS files.
+
+With `polyester` and `Biostrings` installed, run from the working directory containing `data/` and `fungi/`:
+
+```bash
+Rscript "$repo_dir/Polyester_mock_rna/02_polyester_mock_rna.R"
+```
+
+Check the resulting files using [03_Mock_RNA_check.md](03_Mock_RNA_check.md).
